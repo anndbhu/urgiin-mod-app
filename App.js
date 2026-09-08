@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   SafeAreaView,
   View,
@@ -11,7 +11,7 @@ import {
   StatusBar,
 } from "react-native";
 
-const initialPeople = [
+const defaultPeople = [
   { id: "1", name: "Дорж", year: "1940", gender: "Эрэгтэй", relation: "Өвөө" },
   { id: "2", name: "Сэржмаа", year: "1942", gender: "Эмэгтэй", relation: "Эмээ" },
   { id: "3", name: "Бат", year: "1965", gender: "Эрэгтэй", relation: "Аав" },
@@ -38,23 +38,27 @@ function PersonCard({ person, selected, onPress }) {
       style={[styles.personCard, selected && styles.personCardSelected]}
     >
       <Avatar gender={person.gender} />
-      <Text style={styles.personName}>{person.name}</Text>
+      <Text style={styles.personName} numberOfLines={1}>{person.name}</Text>
       <Text style={styles.personMeta}>{person.relation}</Text>
-      <Text style={styles.personYear}>{person.year ? ${person.year} он : ""}</Text>
+      <Text style={styles.personYear}>
+        {person.year ? person.year + " он" : ""}
+      </Text>
     </TouchableOpacity>
   );
 }
 
 export default function App() {
   const [screen, setScreen] = useState("home");
-  const [people, setPeople] = useState(initialPeople);
+  const [people, setPeople] = useState(defaultPeople);
   const [selectedId, setSelectedId] = useState("6");
+  const [editingId, setEditingId] = useState(null);
   const [search, setSearch] = useState("");
+  
   const [form, setForm] = useState({
     name: "",
     year: "",
     gender: "Эрэгтэй",
-    relation: "Хамаатан",
+    relation: "Аав",
   });
 
   const selectedPerson = people.find((p) => p.id === selectedId) || people[0];
@@ -67,29 +71,66 @@ export default function App() {
     );
   }, [people, search]);
 
-  function addPerson() {
+  function savePerson() {
     if (!form.name.trim()) {
       Alert.alert("Анхаарна уу", "Нэрээ оруулна уу.");
       return;
     }
 
-    const newPerson = {
-      id: Date.now().toString(),
-      name: form.name.trim(),
-      year: form.year.trim(),
-      gender: form.gender,
-      relation: form.relation.trim() || "Хамаатан",
-    };
+    if (editingId) {
+      setPeople((prev) =>
+        prev.map((p) =>
+          p.id === editingId
+            ? { ...p, name: form.name.trim(), year: form.year.trim(), gender: form.gender, relation: form.relation }
+            : p
+        )
+      );
+      setEditingId(null);
+    } else {
+      const newPerson = {
+        id: Date.now().toString(),
+        name: form.name.trim(),
+        year: form.year.trim(),
+        gender: form.gender,
+        relation: form.relation || "Хамаатан",
+      };
+      setPeople((prev) => [...prev, newPerson]);
+      setSelectedId(newPerson.id);
+    }
 
-    setPeople((prev) => [...prev, newPerson]);
-    setSelectedId(newPerson.id);
-    setForm({
-      name: "",
-      year: "",
-      gender: "Эрэгтэй",
-      relation: "Хамаатан",
-    });
+    setForm({ name: "", year: "", gender: "Эрэгтэй", relation: "Аав" });
     setScreen("tree");
+  }
+
+  function deletePerson(id) {
+    Alert.alert(
+      "Устгах",
+      "Та энэ хүнийг ургийн модноос устгахдаа итгэлтэй байна уу?",
+      [
+        { text: "Цуцлах", style: "cancel" },
+        {
+          text: "Устгах",
+          style: "destructive",
+          onPress: () => {
+            const updated = people.filter((p) => p.id !== id);
+            setPeople(updated);
+            if (updated.length > 0) setSelectedId(updated[0].id);
+            setScreen("tree");
+          },
+        },
+      ]
+    );
+  }
+
+  function startEdit(person) {
+    setEditingId(person.id);
+    setForm({
+      name: person.name,
+      year: person.year,
+      gender: person.gender,
+      relation: person.relation,
+    });
+    setScreen("add");
   }
 
   function Header({ title, back = false }) {
@@ -101,7 +142,7 @@ export default function App() {
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
-            onPress={() => Alert.alert("Ургийн мод", "Эхний хувилбар")}
+            onPress={() => Alert.alert("Ургийн мод v1.1", "Хөгжүүлж буй систем")}
             style={styles.headerButton}
           >
             <Text style={styles.menuText}>☰</Text>
@@ -134,7 +175,7 @@ export default function App() {
             <Text style={styles.menuEmoji}>🌳</Text>
             <View style={styles.menuInfo}>
               <Text style={styles.menuTitle}>Миний ургийн мод</Text>
-              <Text style={styles.menuSubtitle}>Ургийн модоо харах</Text>
+              <Text style={styles.menuSubtitle}>Ургийн модоо харах ({people.length} хүн)</Text>
             </View>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
@@ -148,7 +189,14 @@ export default function App() {
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuCard} onPress={() => setScreen("add")}>
+          <TouchableOpacity
+            style={styles.menuCard}
+            onPress={() => {
+              setEditingId(null);
+              setForm({ name: "", year: "", gender: "Эрэгтэй", relation: "Аав" });
+              setScreen("add");
+            }}
+          >
             <Text style={styles.menuEmoji}>👨‍👩‍👧</Text>
             <View style={styles.menuInfo}>
               <Text style={styles.menuTitle}>Гэр бүлийн гишүүд</Text>
@@ -174,42 +222,51 @@ export default function App() {
   function Tree() {
     const grand = people.filter((p) => p.relation === "Өвөө" || p.relation === "Эмээ");
     const parents = people.filter((p) => p.relation === "Аав" || p.relation === "Ээж");
-    const children = people.filter((p) => ["Ах", "Би", "Дүү"].includes(p.relation));
+    const children = people.filter((p) => ["Ах", "Би", "Дүү", "Хүү", "Охин"].includes(p.relation));
+    const others = people.filter(
+      (p) => !["Өвөө", "Эмээ", "Аав", "Ээж", "Ах", "Би", "Дүү", "Хүү", "Охин"].includes(p.relation)
+    );
 
     return (
       <SafeAreaView style={styles.safe}>
         <Header title="Миний ургийн мод" back />
         <ScrollView horizontal contentContainerStyle={styles.treeScroll}>
           <View style={styles.tree}>
-            <Text style={styles.treeSection}>ӨВӨӨ • ЭМЭЭ</Text>
-            <View style={styles.row}>
-              {grand.map((p) => (
-                <PersonCard
-                  key={p.id}
-                  person={p}
-                  selected={p.id === selectedId}
-                  onPress={() => setSelectedId(p.id)}
-                />
-              ))}
-            </View>
+            {grand.length > 0 && (
+              <>
+                <Text style={styles.treeSection}>ӨВӨӨ • ЭМЭЭ</Text>
+                <View style={styles.row}>
+                  {grand.map((p) => (
+                    <PersonCard
+                      key={p.id}
+                      person={p}
+                      selected={p.id === selectedId}
+                      onPress={() => setSelectedId(p.id)}
+                    />
+                  ))}
+                </View>
+                <Text style={styles.connector}>│{"\n"}▼</Text>
+              </>
+            )}
 
-            <Text style={styles.connector}>│{"\n"}▼</Text>
+            {parents.length > 0 && (
+              <>
+                <Text style={styles.treeSection}>ААВ • ЭЭЖ</Text>
+                <View style={styles.row}>
+                  {parents.map((p) => (
+                    <PersonCard
+                      key={p.id}
+                      person={p}
+                      selected={p.id === selectedId}
+                      onPress={() => setSelectedId(p.id)}
+                    />
+                  ))}
+                </View>
+                <Text style={styles.connector}>│{"\n"}▼</Text>
+              </>
+            )}
 
-            <Text style={styles.treeSection}>ААВ • ЭЭЖ</Text>
-            <View style={styles.row}>
-              {parents.map((p) => (
-                <PersonCard
-                  key={p.id}
-                  person={p}
-                  selected={p.id === selectedId}
-                  onPress={() => setSelectedId(p.id)}
-                />
-              ))}
-            </View>
-
-            <Text style={styles.connector}>│{"\n"}▼</Text>
-
-            <Text style={styles.treeSection}>ХҮҮХДҮҮД</Text>
+            <Text style={styles.treeSection}>ХҮҮХДҮҮД / АХ ДҮҮС</Text>
             <View style={styles.row}>
               {children.map((p) => (
                 <PersonCard
@@ -219,11 +276,34 @@ export default function App() {
                   onPress={() => setSelectedId(p.id)}
                 />
               ))}
-              <TouchableOpacity style={styles.addChild} onPress={() => setScreen("add")}>
+              <TouchableOpacity
+                style={styles.addChild}
+                onPress={() => {
+                  setEditingId(null);
+                  setForm({ name: "", year: "", gender: "Эрэгтэй", relation: "Дүү" });
+                  setScreen("add");
+                }}
+              >
                 <Text style={styles.plus}>＋</Text>
                 <Text style={styles.addChildText}>Хүн нэмэх</Text>
               </TouchableOpacity>
             </View>
+
+            {others.length > 0 && (
+              <>
+                <Text style={styles.treeSection}>БУСАД ХАМААТНУУД</Text>
+                <View style={styles.row}>
+                  {others.map((p) => (
+                    <PersonCard
+                      key={p.id}
+                      person={p}
+                      selected={p.id === selectedId}
+                      onPress={() => setSelectedId(p.id)}
+                    />
+                  ))}
+                </View>
+              </>
+            )}
 
             {selectedPerson && (
               <View style={styles.selectedPanel}>
@@ -231,14 +311,14 @@ export default function App() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.selectedName}>{selectedPerson.name}</Text>
                   <Text style={styles.selectedMeta}>
-                    {selectedPerson.relation} • {selectedPerson.year || "Төрсөн он оруулаагүй"}
+                    {selectedPerson.relation} • {selectedPerson.year || "Төрсөн онгүй"}
                   </Text>
                 </View>
                 <TouchableOpacity
                   style={styles.smallButton}
                   onPress={() => setScreen("person")}
                 >
-                  <Text style={styles.smallButtonText}>Мэдээлэл</Text>
+                  <Text style={styles.smallButtonText}>Харах</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -250,9 +330,11 @@ export default function App() {
   }
 
   function AddPerson() {
+    const relationsList = ["Өвөө", "Эмээ", "Аав", "Ээж", "Ах", "Дүү", "Хүү", "Охин", "Хамаатан"];
+
     return (
       <SafeAreaView style={styles.safe}>
-        <Header title="Хүн нэмэх" back />
+        <Header title={editingId ? "Мэдээлэл засах" : "Шинэ хүн нэмэх"} back />
         <ScrollView contentContainerStyle={styles.formContainer}>
           <Text style={styles.label}>Нэр *</Text>
           <TextInput
@@ -286,22 +368,34 @@ export default function App() {
             ))}
           </View>
 
-          <Text style={styles.label}>Төрөл / Хамаарал</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Жишээ: Аав, Ээж, Ах, Дүү"
-            value={form.relation}
-            onChangeText={(v) => setForm({ ...form, relation: v })}
-          />
-
-          <View style={styles.photoBox}>
-            <Text style={styles.photoIcon}>📷</Text>
-            <Text style={styles.photoText}>Зураг нэмэх</Text>
-            <Text style={styles.photoHint}>Зургийн функцыг дараагийн хувилбарт холбоно.</Text>
+          <Text style={styles.label}>Хамаарал / Төрөл</Text>
+          <View style={styles.relationGrid}>
+            {relationsList.map((rel) => (
+              <TouchableOpacity
+                key={rel}
+                onPress={() => setForm({ ...form, relation: rel })}
+                style={[
+                  styles.relationBadge,
+                  form.relation === rel && styles.relationBadgeActive,
+                ]}
+              >
+                <Text
+                  style={
+                    form.relation === rel
+                      ? styles.relationBadgeTextActive
+                      : styles.relationBadgeText
+                  }
+                >
+                  {rel}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
-          <TouchableOpacity style={styles.primaryButton} onPress={addPerson}>
-            <Text style={styles.primaryButtonText}>Хадгалах</Text>
+          <TouchableOpacity style={styles.primaryButton} onPress={savePerson}>
+            <Text style={styles.primaryButtonText}>
+              {editingId ? "Өөрчлөлтийг хадгалах" : "Ургийн модонд нэмэх"}
+            </Text>
           </TouchableOpacity>
         </ScrollView>
         <BottomNav active="add" />
@@ -316,7 +410,7 @@ export default function App() {
         <View style={styles.searchWrap}>
           <TextInput
             style={styles.searchInput}
-            placeholder="Нэрээр хайх..."
+            placeholder="Нэр эсвэл хамаарлаар хайх..."
             value={search}
             onChangeText={setSearch}
           />
@@ -362,15 +456,22 @@ export default function App() {
             <InfoRow icon="📅" label="Төрсөн он" value={selectedPerson.year || "Оруулаагүй"} />
             <InfoRow icon="⚥" label="Хүйс" value={selectedPerson.gender} />
             <InfoRow icon="👨‍👩‍👧" label="Төрөл" value={selectedPerson.relation} />
-            <InfoRow icon="🖼️" label="Зураг" value="Зураг нэмэх" />
           </View>
 
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={() => Alert.alert("Засах", "Засварлах хэсгийг дараагийн хувилбарт нэмнэ.")}
-          >
-            <Text style={styles.primaryButtonText}>Засах</Text>
-          </TouchableOpacity>
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={[styles.primaryButton, { flex: 1, backgroundColor: "#2D6A4F" }]}
+              onPress={() => startEdit(selectedPerson)}
+            >
+              <Text style={styles.primaryButtonText}>Засах</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.primaryButton, { flex: 1, backgroundColor: "#E63946" }]}
+              onPress={() => deletePerson(selectedPerson.id)}
+            >
+              <Text style={styles.primaryButtonText}>Устгах</Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
         <BottomNav active="tree" />
       </SafeAreaView>
@@ -395,26 +496,22 @@ export default function App() {
           <Text style={styles.settingsSection}>Ерөнхий</Text>
           <SettingRow title="🌐  Хэл" value="Монгол" />
           <SettingRow title="☀️  Харагдах байдал" value="Гэрэлтэй" />
-          <SettingRow title="🔔  Мэдэгдэл" value="Асаалттай" />
 
           <Text style={styles.settingsSection}>Аюулгүй байдал</Text>
           <SettingRow title="🔑  Нууц үг өөрчлөх" />
-          <SettingRow title="🛡️  Хоёр алхат баталгаажуулалт" value="Унтраах" />
 
           <Text style={styles.settingsSection}>Бусад</Text>
-          <SettingRow title="☁️  Нөөцлөх / Сэргээх" />
           <SettingRow title="ⓘ  Бидний тухай" />
-          <SettingRow title="↪  Гарах" danger />
         </ScrollView>
         <BottomNav active="settings" />
       </SafeAreaView>
     );
   }
 
-  function SettingRow({ title, value, danger }) {
+  function SettingRow({ title, value }) {
     return (
       <TouchableOpacity style={styles.settingRow}>
-        <Text style={[styles.settingTitle, danger && styles.danger]}>{title}</Text>
+        <Text style={styles.settingTitle}>{title}</Text>
         <Text style={styles.settingValue}>{value || "›"}</Text>
       </TouchableOpacity>
     );
@@ -425,11 +522,18 @@ export default function App() {
       <View style={styles.bottomNav}>
         <NavItem icon="⌂" label="Нүүр" active={active === "home"} onPress={() => setScreen("home")} />
         <NavItem icon="⌕" label="Хайх" active={active === "search"} onPress={() => setScreen("search")} />
-        <TouchableOpacity style={styles.fab} onPress={() => setScreen("add")}>
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => {
+            setEditingId(null);
+            setForm({ name: "", year: "", gender: "Эрэгтэй", relation: "Аав" });
+            setScreen("add");
+          }}
+        >
           <Text style={styles.fabText}>＋</Text>
         </TouchableOpacity>
         <NavItem icon="☷" label="Мод" active={active === "tree"} onPress={() => setScreen("tree")} />
-        <NavItem icon="⚙" label="Профайл" active={active === "settings"} onPress={() => setScreen("settings")} />
+        <NavItem icon="⚙" label="Тохиргоо" active={active === "settings"} onPress={() => setScreen("settings")} />
       </View>
     );
   }
@@ -450,3 +554,114 @@ export default function App() {
   if (screen === "person") return <Person />;
   return <Settings />;
 }
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: "#F4F7F4" },
+  header: {
+    height: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    backgroundColor: "#FFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E5E5",
+  },
+  headerTitle: { fontSize: 18, fontWeight: "bold", color: "#1B4332" },
+  headerButton: { padding: 8 },
+  headerButtonText: { fontSize: 28, color: "#2D6A4F" },
+  menuText: { fontSize: 20 },
+  searchIcon: { fontSize: 20 },
+  homeContent: { padding: 20 },
+  hero: { alignItems: "center", marginVertical: 20 },
+  heroTree: { fontSize: 60 },
+  welcome: { fontSize: 22, fontWeight: "bold", marginTop: 10, color: "#1B4332" },
+  subWelcome: { fontSize: 14, color: "#666", marginTop: 4 },
+  menuCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    elevation: 2,
+  },
+  menuEmoji: { fontSize: 24, marginRight: 16 },
+  menuInfo: { flex: 1 },
+  menuTitle: { fontSize: 16, fontWeight: "600" },
+  menuSubtitle: { fontSize: 12, color: "#888" },
+  chevron: { fontSize: 20, color: "#CCC" },
+  treeScroll: { padding: 20 },
+  tree: { alignItems: "center" },
+  treeSection: { fontSize: 12, fontWeight: "bold", color: "#52B788", marginVertical: 10 },
+  row: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 10 },
+  connector: { textAlign: "center", color: "#B7E4C7", marginVertical: 6 },
+  personCard: {
+    backgroundColor: "#FFF",
+    padding: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    width: 90,
+    borderWidth: 1,
+    borderColor: "#E5E5E5",
+  },
+  personCardSelected: { borderColor: "#2D6A4F", backgroundColor: "#D8F3DC" },
+  personName: { fontSize: 14, fontWeight: "bold", marginTop: 4 },
+  personMeta: { fontSize: 11, color: "#666" },
+  personYear: { fontSize: 10, color: "#999" },
+  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#E8F5E9", justifyContent: "center", alignItems: "center" },
+  avatarSmall: { width: 30, height: 30, borderRadius: 15 },
+  avatarText: { fontSize: 20 },
+  avatarTextSmall: { fontSize: 14 },
+  addChild: { width: 90, height: 95, borderRadius: 10, borderWidth: 1, borderColor: "#2D6A4F", borderStyle: "dashed", justifyContent: "center", alignItems: "center" },
+  plus: { fontSize: 20, color: "#2D6A4F" },
+  addChildText: { fontSize: 11, color: "#2D6A4F" },
+  selectedPanel: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFF", padding: 12, borderRadius: 10, marginTop: 20, width: "100%", gap: 10 },
+  selectedName: { fontSize: 15, fontWeight: "bold" },
+  selectedMeta: { fontSize: 12, color: "#666" },
+  smallButton: { backgroundColor: "#2D6A4F", paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6 },
+  smallButtonText: { color: "#FFF", fontSize: 12 },
+  formContainer: { padding: 20 },
+  label: { fontSize: 14, fontWeight: "600", marginBottom: 6, marginTop: 12 },
+  input: { backgroundColor: "#FFF", borderWidth: 1, borderColor: "#DDD", borderRadius: 8, padding: 12, fontSize: 14 },
+  segment: { flexDirection: "row", gap: 10 },
+  segmentButton: { flex: 1, padding: 12, backgroundColor: "#FFF", borderWidth: 1, borderColor: "#DDD", borderRadius: 8, alignItems: "center" },
+  segmentActive: { backgroundColor: "#2D6A4F", borderColor: "#2D6A4F" },
+  segmentText: { color: "#333" },
+  segmentActiveText: { color: "#FFF", fontWeight: "bold" },
+  relationGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
+  relationBadge: { paddingVertical: 8, paddingHorizontal: 14, backgroundColor: "#FFF", borderRadius: 20, borderWidth: 1, borderColor: "#DDD" },
+  relationBadgeActive: { backgroundColor: "#2D6A4F", borderColor: "#2D6A4F" },
+  relationBadgeText: { color: "#555", fontSize: 13 },
+  relationBadgeTextActive: { color: "#FFF", fontSize: 13, fontWeight: "bold" },
+  primaryButton: { backgroundColor: "#2D6A4F", padding: 16, borderRadius: 8, alignItems: "center", marginTop: 24 },
+  primaryButtonText: { color: "#FFF", fontSize: 16, fontWeight: "bold" },
+  actionRow: { flexDirection: "row", gap: 12, width: "100%" },
+  searchWrap: { padding: 16, backgroundColor: "#FFF" },
+  searchInput: { backgroundColor: "#F0F0F0", padding: 12, borderRadius: 8 },
+  searchList: { padding: 16 },
+  searchPerson: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFF", padding: 12, borderRadius: 8, marginBottom: 8, gap: 12 },
+  searchName: { fontSize: 15, fontWeight: "600" },
+  searchMeta: { fontSize: 12, color: "#666" },
+  emptyText: { textAlign: "center", color: "#999", marginTop: 40 },
+  personContainer: { padding: 20, alignItems: "center" },
+  profileName: { fontSize: 20, fontWeight: "bold", marginTop: 12 },
+  profileRelation: { fontSize: 14, color: "#666", marginBottom: 20 },
+  infoCard: { backgroundColor: "#FFF", borderRadius: 10, padding: 16, width: "100%", gap: 16 },
+  infoRow: { flexDirection: "row", alignItems: "center" },
+  infoIcon: { fontSize: 18, width: 30 },
+  infoLabel: { flex: 1, color: "#666" },
+  infoValue: { fontWeight: "600" },
+  settings: { padding: 16 },
+  settingsSection: { fontSize: 14, fontWeight: "bold", color: "#2D6A4F", marginTop: 16, marginBottom: 8 },
+  settingRow: { flexDirection: "row", justifyContent: "space-between", padding: 16, backgroundColor: "#FFF", borderRadius: 8, marginBottom: 6 },
+  settingTitle: { fontSize: 14 },
+  settingValue: { color: "#999" },
+  bottomNav: { flexDirection: "row", backgroundColor: "#FFF", height: 60, borderTopWidth: 1, borderTopColor: "#EEE", alignItems: "center", justifyContent: "space-around" },
+  navItem: { alignItems: "center" },
+  navIcon: { fontSize: 20, color: "#999" },
+  navLabel: { fontSize: 10, color: "#999" },
+  navActive: { color: "#2D6A4F", fontWeight: "bold" },
+  fab: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#2D6A4F", justifyContent: "center", alignItems: "center", marginTop: -20 },
+  fabText: { color: "#FFF", fontSize: 24, fontWeight: "bold" },
+});
